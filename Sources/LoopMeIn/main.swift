@@ -133,7 +133,6 @@ let websocketConnect = websocketClient.connect(scheme: url.scheme ?? "wss", host
     }, logger: logger)
 
   webSocket.onText { _, event in
-    print(event)
     slackEventsHandler.handleEvent(eventAsText: event)
   }
 }

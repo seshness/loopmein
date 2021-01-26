@@ -47,6 +47,8 @@ func updateChannelsPeriodically() {
           }
         }
       }
+    }.whenFailure { error in
+      logger.error("Error updating channels: \(error)")
     }
   }
 }
