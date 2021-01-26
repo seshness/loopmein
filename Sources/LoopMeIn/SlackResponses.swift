@@ -49,6 +49,15 @@ public struct UserObject : Codable {
 public struct NestedEvent : Codable {
   public var type: String
   public var user: String?
+  public var channel: Channel?
+
+  public init(from decoder: Decoder) throws {
+    let values = try decoder.container(keyedBy: CodingKeys.self)
+    type = try values.decode(String.self, forKey: .type)
+    user = try? values.decode(String.self, forKey: .user)
+    // Gahh this is a string in an app_home_opened but an object in a channel_created
+    channel = try? values.decode(Channel.self, forKey: .channel)
+  }
 }
 
 public struct ResponseMetadata : Codable {
@@ -91,3 +100,13 @@ public struct ViewsOpen : Codable {
   public var view: BlockKitPayload
 }
 
+public struct ConversationsInvite: Codable {
+  // A channel ID
+  public var channel: String
+  public var users: [String]
+}
+
+public struct ConversationsJoin: Codable {
+  // A channel ID
+  public var channel: String
+}

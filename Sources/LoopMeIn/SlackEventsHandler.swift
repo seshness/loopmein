@@ -14,6 +14,17 @@ class SlackEventsHandler {
     self.logger = logger
   }
 
+  @discardableResult func makeSlackApiPostRequest<Contentable>(
+    url: String, for content: Contentable) -> EventLoopFuture<HTTPClient.Response>
+  where Contentable: Encodable {
+    let request = try! HTTPClient.Request(
+      url: url,
+      method: .POST,
+      headers: botAuthHeaders,
+      body: HTTPClient.Body.data(try! JSONEncoder().encode(content)))
+    return makeSlackApiRequest(request)
+  }
+
   @discardableResult func makeSlackApiRequest(_ request: HTTPClient.Request) -> EventLoopFuture<HTTPClient.Response> {
     let execution = client.execute(request: request, logger: logger)
     execution.whenFailure { error in
@@ -52,10 +63,13 @@ class SlackEventsHandler {
     guard let eventAsData = eventAsText.data(using: .utf8) else {
       return
     }
-    guard let slackEvent = try? JSONDecoder().decode(SlackEvent.self, from: eventAsData) else {
-      logger.warning("Not a JSON event: \(eventAsText)")
+    let slackEventResult = Result { try JSONDecoder().decode(SlackEvent.self, from: eventAsData) }
+    if case let .failure(error) = slackEventResult {
+      logger.warning("Bad response parsing: \(error)")
       return
     }
+    let slackEvent = try! slackEventResult.get()
+
     var acknowledgementPayload: Dictionary<String, Any>? = nil
 
     if slackEvent.type == "events_api" && slackEvent.payload?.type == "event_callback" && slackEvent.payload?.event?.type == "app_home_opened" {
@@ -105,6 +119,38 @@ class SlackEventsHandler {
           newListener.create(on: db).whenSuccess {
             self.publishHomeView(userId: userId)
           }
+        }
+      }
+    }
+
+    if slackEvent.type == "events_api" && slackEvent.payload?.type == "event_callback" && slackEvent.payload?.event?.type == "channel_created", let channel = slackEvent.payload?.event?.channel {
+      channel.save(on: db).whenSuccess({ return })
+      let fetchListeners = ChannelListener.query(on: db).all()
+      fetchListeners.whenFailure({ error in
+        self.logger.warning("Error fetching channel listeners, giving up on updates for new channel \(channel.name). Error: \(error)")
+      })
+      fetchListeners.whenSuccess { channelListeners in
+        let activatedListeners = channelListeners.filter { channelListener -> Bool in
+          guard let r = try? Regex(string: channelListener.regex, options: .ignoreCase) else {
+            return false
+          }
+          return r.matches(channel.name)
+        }
+        let usersToInvite = Array(Set(activatedListeners.map({ listener in listener.slackUser })))
+
+        if usersToInvite.isEmpty {
+          return
+        }
+
+        let conversationsJoin = ConversationsJoin(channel: channel.id!)
+        let _ = self.makeSlackApiPostRequest(
+          url: "https://slack.com/api/conversations.join",
+          for: conversationsJoin
+        ).flatMap { joinResponse -> EventLoopFuture<HTTPClient.Response> in
+          let conversationsInvite = ConversationsInvite(channel: channel.id!, users: usersToInvite)
+          return self.makeSlackApiPostRequest(
+            url: "https://slack.com/api/conversations.invite",
+            for: conversationsInvite)
         }
       }
     }

@@ -115,7 +115,7 @@ func makeAppHome(_ channelListeners: [ChannelListener], channels: [Channel]) -> 
     var subtext = "No examples"
     let matchingChannels = getMatchingChannels(for: channelListener.regex, channels: channels)
     if matchingChannels.count > 0 {
-      let sortedMatchingChannels = matchingChannels.sorted(by: { (a, b) in a.num_members > b.num_members })[..<( min(matchingChannels.count, 5))]
+      let sortedMatchingChannels = matchingChannels.sorted(by: { (a, b) in (a.num_members ?? 0) > (b.num_members ?? 0) })[..<( min(matchingChannels.count, 5))]
         .map { channel in "<#\(channel.id!)>" }
         .joined(separator: ", ")
       subtext = "*Example channels*: \(sortedMatchingChannels)"

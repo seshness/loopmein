@@ -16,11 +16,11 @@ public final class Channel: Model, Codable {
   public var created: Int64
 
   @Field(key: "num_members")
-  var num_members: Int64
+  public var num_members: Int64?
 
   public init() {}
 
-  public init(id: String, name: String, created: Int64, numMembers: Int64) {
+  public init(id: String, name: String, created: Int64, numMembers: Int64?) {
     self.id = id
     self.name = name
     self.created = created
