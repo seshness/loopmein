@@ -24,7 +24,7 @@ class SlackEventsHandler {
         self.logger.error("Unexpected response from Slack API: \(response.status). Response data: \(String(data: getData(response), encoding: .utf8) ?? "<could not parse response data>")")
         return
       }
-      self.logger.info("Successful response from \(request.method.string) \(request.url)")
+      self.logger.debug("Successful response from \(request.method.string) \(request.url)")
     }
     return execution
   }
@@ -34,14 +34,17 @@ class SlackEventsHandler {
   }
   
   @discardableResult func publishHomeView(userId: String) -> EventLoopFuture<HTTPClient.Response> {
-    return getListeners(userId: userId).flatMap { channelListeners -> EventLoopFuture<HTTPClient.Response> in
-      let homeView = ViewsPublish(user_id: userId, view: makeAppHome(channelListeners))
-      let publishAppHomeRequest = try! HTTPClient.Request(
-        url: "https://slack.com/api/views.publish",
-        method: .POST,
-        headers: botAuthHeaders,
-        body: HTTPClient.Body.data(try! JSONEncoder().encode(homeView)))
-      return self.makeSlackApiRequest(publishAppHomeRequest)
+    let fetchAllChannels = Channel.query(on: db).all()
+    return getListeners(userId: userId)
+      .and(fetchAllChannels)
+      .flatMap { (channelListeners, allChannels) -> EventLoopFuture<HTTPClient.Response> in
+        let homeView = ViewsPublish(user_id: userId, view: makeAppHome(channelListeners, channels: allChannels))
+        let publishAppHomeRequest = try! HTTPClient.Request(
+          url: "https://slack.com/api/views.publish",
+          method: .POST,
+          headers: botAuthHeaders,
+          body: HTTPClient.Body.data(try! JSONEncoder().encode(homeView)))
+        return self.makeSlackApiRequest(publishAppHomeRequest)
     }
   }
 

@@ -1,4 +1,5 @@
 import Foundation
+import Regex
 
 public struct BlockKitPayload : Codable {
   public var type: String
@@ -102,11 +103,27 @@ public struct TextObject : Codable {
   }
 }
 
-func makeAppHome(_ channelListeners: [ChannelListener]) -> BlockKitPayload {
+func getMatchingChannels(for regex: String, channels: [Channel]) -> [Channel] {
+  guard let r = try? Regex(string: regex, options: .ignoreCase) else {
+    return [];
+  }
+  return channels.filter({ channel in r.matches(channel.name) })
+}
+
+func makeAppHome(_ channelListeners: [ChannelListener], channels: [Channel]) -> BlockKitPayload {
   let listenersBlocksList = channelListeners.map { channelListener -> BlockLayout in
+    var subtext = "No examples"
+    let matchingChannels = getMatchingChannels(for: channelListener.regex, channels: channels)
+    if matchingChannels.count > 0 {
+      let sortedMatchingChannels = matchingChannels.sorted(by: { (a, b) in a.num_members > b.num_members })[..<( min(matchingChannels.count, 5))]
+        .map { channel in "<#\(channel.id!)>" }
+        .joined(separator: ", ")
+      subtext = "*Example channels*: \(sortedMatchingChannels)"
+    }
+
     return BlockLayout(
       type: "section",
-      text: TextObject(type: "mrkdwn", text: ":computer: `\(channelListener.regex)`\n*Example channels*: (TODO)"),
+      text: TextObject(type: "mrkdwn", text: ":computer: `\(channelListener.regex)`\n\(subtext)"),
       accessory: BlockElement(
         type: "button",
         text: TextObject(type: "plain_text", text: "Remove", emoji: true),
