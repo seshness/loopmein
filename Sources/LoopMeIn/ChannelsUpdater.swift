@@ -60,11 +60,13 @@ func updateChannelsPeriodically() {
   eventLoop.scheduleRepeatedTask(initialDelay: .zero, delay: .minutes(30)) { repeatedTask in
     let _ = fetchConversationsList().flatMap { channels -> EventLoopFuture<Void> in
       return db.transaction { conn -> EventLoopFuture<Void> in
-        let promise = eventLoop.makePromise(of: Void.self)
-        addChannelsToDb(channels: channels[...], db: conn, overallResult: promise, eventLoop: eventLoop)
-        return promise.futureResult.map {
-          logger.info("Updated channels list with \(channels.count) channels.")
-          return
+        Channel.query(on: conn).delete().flatMap {
+          let promise = eventLoop.makePromise(of: Void.self)
+          addChannelsToDb(channels: channels[...], db: conn, overallResult: promise, eventLoop: eventLoop)
+          return promise.futureResult.map {
+            logger.info("Updated channels list with \(channels.count) channels.")
+            return
+          }
         }
       }
     }.whenFailure { error in

@@ -123,22 +123,29 @@ guard let url = URL(string: websocketUrl) else {
   exit(1)
 }
 
-print("scheme: \(url.scheme!) host: \(url.host!) port: \(url.port ?? 443) path: \(url.path)/?\(url.query!)")
 // TODO: make this a pool of websocket connections
-let websocketConnect = websocketClient.connect(scheme: url.scheme ?? "wss", host: url.host!, port: 443 /*url.port ?? 443*/, path: "\(url.path)/?\(url.query!)") { webSocket in
-  
-  let slackEventsHandler = SlackEventsHandler(acknowledger: { acknowledgement in
-    webSocket.send(
-      String(data: acknowledgement, encoding: .utf8)!)
-    }, logger: logger)
+func makeWebsocketConnection() -> EventLoopFuture<Void> {
+  let websocketConnect = websocketClient.connect(scheme: url.scheme ?? "wss", host: url.host!, port: 443 /*url.port ?? 443*/, path: "\(url.path)/?\(url.query!)") { webSocket in
+    
+    let slackEventsHandler = SlackEventsHandler(acknowledger: { acknowledgement in
+      webSocket.send(
+        String(data: acknowledgement, encoding: .utf8)!)
+      }, logger: logger)
 
-  webSocket.onText { _, event in
-    slackEventsHandler.handleEvent(eventAsText: event)
+    webSocket.onText { _, event in
+      slackEventsHandler.handleEvent(eventAsText: event)
+    }
+    
+    webSocket.onClose.whenComplete { _ in
+      // Reconnect when closed
+      logger.info("Websocket connection closed, creating a new one.")
+      let _ = makeWebsocketConnection()
+    }
   }
+  return websocketConnect
 }
 
+let _ = makeWebsocketConnection()
 updateChannelsPeriodically()
-
-try websocketConnect.wait()
 
 RunLoop.current.run()
