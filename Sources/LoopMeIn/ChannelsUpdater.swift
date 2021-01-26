@@ -47,7 +47,6 @@ func addChannelsToDb(
   }
   let endIndex = min(channels.endIndex, channels.startIndex + 100)
   let channelsToAdd = channels[(channels.startIndex)..<(endIndex)]
-  print("startIndex: \(channelsToAdd.startIndex) endIndex: \(channelsToAdd.endIndex)")
   let remainingChannels = endIndex == channels.endIndex ? [] : channels[(endIndex)...]
   channelsToAdd.create(on: db).map { _ in
     addChannelsToDb(channels: remainingChannels, db: db, overallResult: overallResult, eventLoop: eventLoop)
