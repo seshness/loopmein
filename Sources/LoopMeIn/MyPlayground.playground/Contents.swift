@@ -99,7 +99,17 @@ func makeAppHome() -> BlockKitPayload {
         BlockElement(type: "button", text: TextObject(type: "plain_text", text: "Remove", emoji: true), value: "uuid")
     ),
     BlockLayout(type: "divider"),
-    BlockLayout(type: "actions", elements: [BlockElement(type: "button", text: TextObject(type: "plain_text", text: ":heavy_plus_sign: Add a regular expression", emoji: true), value: "add-regex")]),
+    BlockLayout(
+      type: "actions",
+      elements: [
+        BlockElement(
+          type: "button",
+          text: TextObject(type: "plain_text", text: ":heavy_plus_sign: Add a regular expression", emoji: true),
+          action_id: "new-regex-view ",
+          value: "add-regex"
+        )
+      ]
+    ),
   ])
 }
 

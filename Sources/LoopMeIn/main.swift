@@ -22,6 +22,7 @@ defer {
 
 let migrations = Migrations()
 migrations.add(CreateChannelListeners())
+migrations.add(CreateChannels())
 let migrator = Migrator(
   databases: dbs,
   migrations: migrations,
@@ -124,31 +125,19 @@ guard let url = URL(string: websocketUrl) else {
 
 print("scheme: \(url.scheme!) host: \(url.host!) port: \(url.port ?? 443) path: \(url.path)/?\(url.query!)")
 let websocketConnect = websocketClient.connect(scheme: url.scheme ?? "wss", host: url.host!, port: 443 /*url.port ?? 443*/, path: "\(url.path)/?\(url.query!)") { webSocket in
+  
+  let slackEventsHandler = SlackEventsHandler(acknowledger: { acknowledgement in
+    webSocket.send(
+      String(data: acknowledgement, encoding: .utf8)!)
+    }, logger: logger)
+
   webSocket.onText { _, event in
     print(event)
-    guard let slackEvent = try? JSONDecoder().decode(SlackEvent.self, from: event.data(using: .utf8) ?? Data()) else {
-      return
-    }
-    if slackEvent.type == "events_api" && slackEvent.payload.type == "event_callback" && slackEvent.payload.event?.type == "app_home_opened" {
-      let homeView = ViewsPublish(user_id: slackEvent.payload.event!.user!, view: makeAppHome())
-      let publishAppHomeRequest = try! HTTPClient.Request(
-        url: "https://slack.com/api/views.publish",
-        method: .POST,
-        headers: botAuthHeaders,
-        body: HTTPClient.Body.data(try! JSONEncoder().encode(homeView)))
-      client.execute(request: publishAppHomeRequest, logger: logger).whenSuccess({ response in
-        if response.status != .ok {
-          print("FAILED: \(response.status)")
-        } else {
-          print(String(data: getData(response), encoding: .utf8)!)
-        }
-      })
-      
-      webSocket.send(
-        String(data: try! JSONEncoder().encode(Acknowledgement(envelope_id: slackEvent.envelope_id)), encoding: .utf8)!)
-    }
+    slackEventsHandler.handleEvent(eventAsText: event)
   }
 }
+
+updateChannelsPeriodically()
 
 try websocketConnect.wait()
 

@@ -6,7 +6,7 @@ final class ChannelListener: Model {
 
   @ID(key: .id)
   var id: UUID?
-  
+
   @Field(key: "slack_user")
   var slackUser: String
 
