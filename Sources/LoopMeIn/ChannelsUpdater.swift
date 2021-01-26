@@ -1,6 +1,7 @@
 import AsyncHTTPClient
 import NIO
 import Foundation
+import FluentKit
 
 func fetchConversationsList(cursor maybeCursor: String? = nil) -> EventLoopFuture<[Channel]> {
   var url = "https://slack.com/api/conversations.list?limit=1000&exclude_archived=true&types=public_channel"
@@ -35,16 +36,36 @@ func fetchConversationsList(cursor maybeCursor: String? = nil) -> EventLoopFutur
     }
 }
 
+func addChannelsToDb(
+  channels: ArraySlice<Channel>,
+  db: FluentKit.Database,
+  overallResult: EventLoopPromise<Void>,
+  eventLoop: EventLoop
+) {
+  if channels.endIndex - channels.startIndex == 0 {
+    return overallResult.succeed(())
+  }
+  let endIndex = min(channels.endIndex, channels.startIndex + 100)
+  let channelsToAdd = channels[(channels.startIndex)..<(endIndex)]
+  print("startIndex: \(channelsToAdd.startIndex) endIndex: \(channelsToAdd.endIndex)")
+  let remainingChannels = endIndex == channels.endIndex ? [] : channels[(endIndex)...]
+  channelsToAdd.create(on: db).map { _ in
+    addChannelsToDb(channels: remainingChannels, db: db, overallResult: overallResult, eventLoop: eventLoop)
+  }.whenFailure { error in
+    overallResult.fail(error)
+  }
+}
+
 func updateChannelsPeriodically() {
   let eventLoop = eventLoopGroup.next()
   eventLoop.scheduleRepeatedTask(initialDelay: .zero, delay: .minutes(30)) { repeatedTask in
     let _ = fetchConversationsList().flatMap { channels -> EventLoopFuture<Void> in
       return db.transaction { conn -> EventLoopFuture<Void> in
-        Channel.query(on: conn).delete().flatMap {
-          return channels.create(on: conn).map {
-            logger.info("Updated channels list with \(channels.count) channels.")
-            return
-          }
+        let promise = eventLoop.makePromise(of: Void.self)
+        addChannelsToDb(channels: channels[...], db: conn, overallResult: promise, eventLoop: eventLoop)
+        return promise.futureResult.map {
+          logger.info("Updated channels list with \(channels.count) channels.")
+          return
         }
       }
     }.whenFailure { error in
