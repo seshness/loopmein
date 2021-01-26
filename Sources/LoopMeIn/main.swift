@@ -124,6 +124,7 @@ guard let url = URL(string: websocketUrl) else {
 }
 
 print("scheme: \(url.scheme!) host: \(url.host!) port: \(url.port ?? 443) path: \(url.path)/?\(url.query!)")
+// TODO: make this a pool of websocket connections
 let websocketConnect = websocketClient.connect(scheme: url.scheme ?? "wss", host: url.host!, port: 443 /*url.port ?? 443*/, path: "\(url.path)/?\(url.query!)") { webSocket in
   
   let slackEventsHandler = SlackEventsHandler(acknowledger: { acknowledgement in

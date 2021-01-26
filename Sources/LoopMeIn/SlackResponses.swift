@@ -37,6 +37,7 @@ public struct State : Codable {
 
 public struct ActionObject : Codable {
   public var action_id: String
+  public var value: String?
 }
 
 public struct UserObject : Codable {
