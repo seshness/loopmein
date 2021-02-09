@@ -2,10 +2,7 @@ import Fluent
 import FluentSQLiteDriver
 import NIO
 import Foundation
-import AsyncHTTPClient
 import Vapor
-
-print("Hello, world!")
 
 let logger = Logger(label: "LoopMeIn.application")
 
@@ -82,70 +79,33 @@ public enum SlackAppError : Error, LocalizedError {
   }
 }
 
-func getWebsocketUrl() -> EventLoopFuture<String> {
-  let execution = client.execute(request: request, logger: logger)
-  return execution.mapAlways { openSocketResult in
-    switch openSocketResult {
-    case .failure(let error):
-      return .failure(SlackAppError.networkError(error.localizedDescription))
-    case .success(let response):
-      if response.status != .ok {
-        return .failure(SlackAppError.unexpectedHTTPResponseError(code: response.status.code))
-      }
-      guard let connectionOpenResponse = try? JSONDecoder().decode(SlackAppsConnectionsOpenResponse.self, from: getData(response)) else {
-        return .failure(SlackAppError.notJson)
-      }
+let mainEventLoop = eventLoopGroup.next()
+var eventLoopQueue = EventLoopFutureQueue(eventLoop: mainEventLoop)
 
-      if !connectionOpenResponse.ok {
-        return .failure(SlackAppError.slackError(connectionOpenResponse.error ?? "\"ok\": false, but no error provided"))
+func runLoop(eventLoop: EventLoop) -> EventLoopFuture<Void> {
+  let websocketUrlFuture = getWebsocketUrl()
+  return websocketUrlFuture.flatMapAlways { result in
+    if case let .failure(error) = result {
+      logger.critical("\(error.localizedDescription)")
+      // Wait 10s before trying again
+      DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
+        let _ = eventLoopQueue.append(runLoop(eventLoop: eventLoop))
       }
-
-      guard let url = connectionOpenResponse.url else {
-        return .failure(SlackAppError.slackError("no url provided!"))
-      }
-      return .success(url)
+      return eventLoop.future(error: error)
     }
+    let websocketUrl = try! result.get()
+    
+    logger.info("Received websocket URL: \(websocketUrl)")
+
+    let websocketFuture = makeWebsocketConnection(websocketUrl: websocketUrl)
+    let _ = websocketFuture.whenComplete { (result: Result<Void, Error>) in
+      let _ = eventLoopQueue.append(runLoop(eventLoop: eventLoop))
+    }
+    return websocketFuture
   }
 }
+let _ = eventLoopQueue.append(runLoop(eventLoop: mainEventLoop))
 
-var websocketUrl: String = ""
-do {
-  websocketUrl = try getWebsocketUrl().wait()
-} catch {
-  logger.critical("\(error.localizedDescription)")
-}
-
-print(websocketUrl)
-
-let websocketClient = WebSocketClient.init(eventLoopGroupProvider: .shared(eventLoopGroup))
-guard let url = URL(string: websocketUrl) else {
-  logger.critical("invalid url: \(websocketUrl)")
-  exit(1)
-}
-
-// TODO: make this a pool of websocket connections
-func makeWebsocketConnection() -> EventLoopFuture<Void> {
-  let websocketConnect = websocketClient.connect(scheme: url.scheme ?? "wss", host: url.host!, port: 443 /*url.port ?? 443*/, path: "\(url.path)/?\(url.query!)") { webSocket in
-    
-    let slackEventsHandler = SlackEventsHandler(acknowledger: { acknowledgement in
-      webSocket.send(
-        String(data: acknowledgement, encoding: .utf8)!)
-      }, logger: logger)
-
-    webSocket.onText { _, event in
-      slackEventsHandler.handleEvent(eventAsText: event)
-    }
-    
-    webSocket.onClose.whenComplete { _ in
-      // Reconnect when closed
-      logger.info("Websocket connection closed, creating a new one.")
-      let _ = makeWebsocketConnection()
-    }
-  }
-  return websocketConnect
-}
-
-let _ = makeWebsocketConnection()
 updateChannelsPeriodically()
 
 RunLoop.current.run()
