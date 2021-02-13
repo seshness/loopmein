@@ -1,16 +1,16 @@
 # LoopMeIn
 
-*Warning*: This is an alpha-quality product that reads a lot like a "my first Swift" project...because it is.
+⚠️ **Warning**: This is an alpha-quality product that reads a lot like a "my first Swift" project...because it is.
 
 A subscription service for your Slack workspace.
 Listens for new channels in your Slack workspace and automatically adds you.
 
-![how it works diagram](/img/loopmein-how-it-works.png?raw=true)
+![how it works diagram](https://github.com/seshness/loopmein/blob/main/img/loopmein-how-it-works.png?raw=true)
 Diagram source: https://excalidraw.com/#json=6117935152103424,63d8RITQ_p7J7YqNYkakAw
 
 * Available to all users on your Slack workspace
 * Users subscribe to channels with regular expressions
-* Stores data in a SQLite file on disk
+* Stores subscriptions in a SQLite file on disk
 
 ## Get started
 1. Create a new Slack app.
